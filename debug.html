@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Auth Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        input, button { padding: 10px; margin: 5px; font-size: 16px; }
+        .info { background: #f0f0f0; padding: 15px; margin: 15px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; padding: 15px; margin: 15px 0; border-radius: 5px; }
+        .success { background: #e8f5e8; color: #2e7d32; padding: 15px; margin: 15px 0; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🎵 Spotify Auth Debug Tool</h1>
+    
+    <div class="info">
+        <strong>Instructions:</strong><br>
+        1. Make sure your Spotify app redirect URI is exactly: <code>https://helenecodes.github.io/music-bud/debug.html</code><br>
+        2. Enter your Client ID below<br>
+        3. Click "Test Auth"
+    </div>
+
+    <div>
+        <label>Spotify Client ID:</label><br>
+        <input type="text" id="client-id" placeholder="Enter your Spotify Client ID" style="width: 400px;">
+    </div>
+    
+    <div>
+        <button id="test-auth">Test Auth</button>
+        <button id="clear-storage">Clear Saved Data</button>
+    </div>
+
+    <div id="debug-info"></div>
+    <div id="result"></div>
+
+    <script>
+        const clientIdInput = document.getElementById('client-id');
+        const testAuthBtn = document.getElementById('test-auth');
+        const clearStorageBtn = document.getElementById('clear-storage');
+        const debugInfo = document.getElementById('debug-info');
+        const result = document.getElementById('result');
+
+        // Load saved client ID
+        const savedClientId = localStorage.getItem('spotify_client_id');
+        if (savedClientId) {
+            clientIdInput.value = savedClientId;
+        }
+
+        // Show debug info
+        function updateDebugInfo() {
+            const currentUrl = window.location.href;
+            const hash = window.location.hash;
+            
+            debugInfo.innerHTML = `
+                <div class="info">
+                    <strong>Debug Info:</strong><br>
+                    Current URL: <code>${currentUrl}</code><br>
+                    URL Hash: <code>${hash || 'None'}</code><br>
+                    Origin: <code>${window.location.origin}</code><br>
+                    Pathname: <code>${window.location.pathname}</code>
+                </div>
+            `;
+        }
+
+        // Check for auth callback
+        function checkAuthCallback() {
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+            const accessToken = params.get('access_token');
+            const error = params.get('error');
+            const errorDescription = params.get('error_description');
+
+            if (error) {
+                result.innerHTML = `<div class="error">
+                    <strong>Authentication Error:</strong><br>
+                    Error: ${error}<br>
+                    Description: ${errorDescription || 'No description provided'}
+                </div>`;
+                return;
+            }
+
+            if (accessToken) {
+                result.innerHTML = `<div class="success">
+                    <strong>🎉 Authentication Successful!</strong><br>
+                    Access Token: ${accessToken.substring(0, 20)}...<br>
+                    Token Length: ${accessToken.length} characters
+                </div>`;
+                
+                // Clean up URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                return;
+            }
+        }
+
+        // Test authentication
+        testAuthBtn.addEventListener('click', () => {
+            const clientId = clientIdInput.value.trim();
+            
+            if (!clientId) {
+                result.innerHTML = '<div class="error">Please enter your Spotify Client ID</div>';
+                return;
+            }
+
+            // Save client ID
+            localStorage.setItem('spotify_client_id', clientId);
+
+            const redirectUri = window.location.href;
+            const scopes = ['user-library-read'];
+            
+            const authUrl = `https://accounts.spotify.com/authorize?` +
+                `client_id=${encodeURIComponent(clientId)}&` +
+                `response_type=token&` +
+                `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+                `scope=${encodeURIComponent(scopes.join(' '))}`;
+
+            result.innerHTML = `<div class="info">
+                <strong>Redirecting to Spotify...</strong><br>
+                Redirect URI: <code>${redirectUri}</code><br>
+                Client ID: <code>${clientId}</code>
+            </div>`;
+
+            console.log('Auth URL:', authUrl);
+            
+            // Small delay to show the message
+            setTimeout(() => {
+                window.location.href = authUrl;
+            }, 1000);
+        });
+
+        // Clear storage
+        clearStorageBtn.addEventListener('click', () => {
+            localStorage.clear();
+            clientIdInput.value = '';
+            result.innerHTML = '<div class="info">Storage cleared</div>';
+        });
+
+        // Initialize
+        updateDebugInfo();
+        checkAuthCallback();
+    </script>
+</body>
+</html>
