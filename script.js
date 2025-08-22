@@ -49,12 +49,9 @@
           this.searchBtn.addEventListener('click', () => this.filterTracks());
           this.searchInput.addEventListener('input', () => this.filterTracks());
 
-          this.likedSongsBtn.addEventListener('click', () =>
-  this.switchSource('liked'));
-          this.playlistsBtn.addEventListener('click', () =>
-  this.switchSource('playlists'));
-          this.albumsBtn.addEventListener('click', () =>
-  this.switchSource('albums'));
+          this.likedSongsBtn.addEventListener('click', () => this.switchSource('liked'));
+          this.playlistsBtn.addEventListener('click', () => this.switchSource('playlists'));
+          this.albumsBtn.addEventListener('click', () => this.switchSource('albums'));
 
           this.playlistSelect.addEventListener('change', () => this.loadPlaylist());
           this.albumSelect.addEventListener('change', () => this.loadAlbum());
@@ -77,26 +74,40 @@
           if (savedClientId) this.clientIdInput.value = savedClientId;
       }
 
+      // Generate PKCE challenge
+      generateCodeVerifier() {
+          const array = new Uint8Array(32);
+          crypto.getRandomValues(array);
+          return btoa(String.fromCharCode.apply(null, array))
+              .replace(/\+/g, '-')
+              .replace(/\//g, '_')
+              .replace(/=/g, '');
+      }
+
+      async generateCodeChallenge(verifier) {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(verifier);
+          const digest = await crypto.subtle.digest('SHA-256', data);
+          return btoa(String.fromCharCode.apply(null, new Uint8Array(digest)))
+              .replace(/\+/g, '-')
+              .replace(/\//g, '_')
+              .replace(/=/g, '');
+      }
+
       checkForAuthCallback() {
-          // Check for token in URL hash (Implicit Grant Flow)
-          const hash = window.location.hash.substring(1);
-          const params = new URLSearchParams(hash);
-          const accessToken = params.get('access_token');
-          const error = params.get('error');
+          const urlParams = new URLSearchParams(window.location.search);
+          const code = urlParams.get('code');
+          const error = urlParams.get('error');
 
           if (error) {
-              this.showStatus('Authorization cancelled', 'error');
+              this.showStatus('Authorization cancelled: ' + error, 'error');
               return;
           }
 
-          if (accessToken) {
-              this.accessToken = accessToken;
-              this.showStatus('Connected successfully!', 'success');
-              this.showLibraryInterface();
-              this.loadLikedSongs();
+          if (code) {
+              this.exchangeCodeForToken(code);
               // Clean up URL
-              window.history.replaceState({}, document.title,
-  window.location.pathname);
+              window.history.replaceState({}, document.title, window.location.pathname);
           }
       }
 
@@ -110,21 +121,80 @@
 
           localStorage.setItem('spotify_client_id', this.clientId);
 
-          const redirectUri = window.location.origin + window.location.pathname;
-          const scopes = [
-              'user-library-read',
-              'playlist-read-private',
-              'playlist-read-collaborative',
-              'user-read-private'
-          ].join(' ');
+          try {
+              // Generate PKCE parameters
+              const codeVerifier = this.generateCodeVerifier();
+              const codeChallenge = await this.generateCodeChallenge(codeVerifier);
 
-          const authUrl = `https://accounts.spotify.com/authorize?` +
-              `client_id=${this.clientId}&` +
-              `response_type=token&` +
-              `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-              `scope=${encodeURIComponent(scopes)}`;
+              // Store code verifier for later use
+              localStorage.setItem('code_verifier', codeVerifier);
 
-          window.location.href = authUrl;
+              const redirectUri = window.location.origin + window.location.pathname;
+              const scopes = [
+                  'user-library-read',
+                  'playlist-read-private',
+                  'playlist-read-collaborative',
+                  'user-read-private'
+              ].join(' ');
+
+              const authUrl = `https://accounts.spotify.com/authorize?` +
+                  `client_id=${this.clientId}&` +
+                  `response_type=code&` +
+                  `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+                  `scope=${encodeURIComponent(scopes)}&` +
+                  `code_challenge_method=S256&` +
+                  `code_challenge=${codeChallenge}`;
+
+              window.location.href = authUrl;
+          } catch (error) {
+              this.showError('Authentication setup failed: ' + error.message);
+          }
+      }
+
+      async exchangeCodeForToken(code) {
+          try {
+              this.showStatus('Getting access token...', 'loading');
+
+              const codeVerifier = localStorage.getItem('code_verifier');
+              const redirectUri = window.location.origin + window.location.pathname;
+
+              if (!codeVerifier) {
+                  throw new Error('Code verifier not found');
+              }
+
+              const response = await fetch('https://accounts.spotify.com/api/token', {
+                  method: 'POST',
+                  headers: {
+                      'Content-Type': 'application/x-www-form-urlencoded',
+                  },
+                  body: new URLSearchParams({
+                      grant_type: 'authorization_code',
+                      code: code,
+                      redirect_uri: redirectUri,
+                      client_id: this.clientId,
+                      code_verifier: codeVerifier
+                  })
+              });
+
+              if (!response.ok) {
+                  const errorData = await response.text();
+                  throw new Error(`Token exchange failed: ${response.status} - ${errorData}`);
+              }
+
+              const data = await response.json();
+              this.accessToken = data.access_token;
+
+              // Clean up stored verifier
+              localStorage.removeItem('code_verifier');
+
+              this.showStatus('Connected successfully!', 'success');
+              this.showLibraryInterface();
+              this.loadLikedSongs();
+
+          } catch (error) {
+              this.showStatus('Authentication failed: ' + error.message, 'error');
+              console.error('Token exchange error:', error);
+          }
       }
 
       showLibraryInterface() {
@@ -134,8 +204,7 @@
 
       switchSource(source) {
           // Update active button
-          document.querySelectorAll('.source-btn').forEach(btn =>
-  btn.classList.remove('active'));
+          document.querySelectorAll('.source-btn').forEach(btn => btn.classList.remove('active'));
 
           if (source === 'liked') {
               this.likedSongsBtn.classList.add('active');
@@ -188,8 +257,7 @@
 
       async loadPlaylists() {
           try {
-              const response = await
-  fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
+              const response = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
                   headers: { 'Authorization': 'Bearer ' + this.accessToken }
               });
 
@@ -207,8 +275,7 @@
 
       async loadAlbums() {
           try {
-              const response = await
-  fetch('https://api.spotify.com/v1/me/albums?limit=50', {
+              const response = await fetch('https://api.spotify.com/v1/me/albums?limit=50', {
                   headers: { 'Authorization': 'Bearer ' + this.accessToken }
               });
 
@@ -225,8 +292,7 @@
       }
 
       populatePlaylistSelect(playlists) {
-          this.playlistSelect.innerHTML = '<option value="">Select a
-  playlist...</option>';
+          this.playlistSelect.innerHTML = '<option value="">Select a playlist...</option>';
           playlists.forEach(playlist => {
               const option = document.createElement('option');
               option.value = playlist.id;
@@ -236,8 +302,7 @@
       }
 
       populateAlbumSelect(albums) {
-          this.albumSelect.innerHTML = '<option value="">Select an
-  album...</option>';
+          this.albumSelect.innerHTML = '<option value="">Select an album...</option>';
           albums.forEach(albumItem => {
               const album = albumItem.album;
               const option = document.createElement('option');
@@ -254,8 +319,7 @@
           try {
               this.showLoading(true);
               const tracks = [];
-              let url =
-  `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`;
+              let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`;
 
               while (url) {
                   const response = await fetch(url, {
@@ -267,8 +331,8 @@
                   }
 
                   const data = await response.json();
-                  tracks.push(...data.items.map(item => item.track).filter(track =>
-  track && track.id));
+                  tracks.push(...data.items.map(item => item.track).filter(track => track &&
+  track.id));
                   url = data.next;
               }
 
@@ -356,19 +420,15 @@
           card.className = 'track-card';
           card.onclick = () => this.showTrackModal(track);
 
-          const image = track.album?.images?.[2]?.url || track.images?.[2]?.url ||
-  '';
-          const artistNames = track.artists?.map(a => a.name).join(', ') || 'Unknown
-  Artist';
+          const image = track.album?.images?.[2]?.url || track.images?.[2]?.url || '';
+          const artistNames = track.artists?.map(a => a.name).join(', ') || 'Unknown Artist';
           const albumName = track.album?.name || 'Unknown Album';
-          const tempo = track.audioFeatures?.tempo ?
-  Math.round(track.audioFeatures.tempo) + ' BPM' : 'N/A';
-          const key = this.getKeyName(track.audioFeatures?.key,
-  track.audioFeatures?.mode);
+          const tempo = track.audioFeatures?.tempo ? Math.round(track.audioFeatures.tempo) + ' BPM' :
+   'N/A';
+          const key = this.getKeyName(track.audioFeatures?.key, track.audioFeatures?.mode);
 
           card.innerHTML = `
-              <img src="${image}" alt="Album cover"
-  onerror="this.style.display='none'">
+              <img src="${image}" alt="Album cover" onerror="this.style.display='none'">
               <div class="track-card-info">
                   <h4>${track.name}</h4>
                   <p>${artistNames}</p>
@@ -387,41 +447,40 @@
           const features = track.audioFeatures || {};
 
           // Populate modal with track info
-          document.getElementById('modal-track-image').src =
-  track.album?.images?.[1]?.url || track.images?.[1]?.url || '';
+          document.getElementById('modal-track-image').src = track.album?.images?.[1]?.url ||
+  track.images?.[1]?.url || '';
           document.getElementById('modal-track-name').textContent = track.name;
-          document.getElementById('modal-track-artist').textContent =
-  track.artists?.map(a => a.name).join(', ') || 'Unknown Artist';
-          document.getElementById('modal-track-album').textContent =
-  track.album?.name || 'Unknown Album';
+          document.getElementById('modal-track-artist').textContent = track.artists?.map(a =>
+  a.name).join(', ') || 'Unknown Artist';
+          document.getElementById('modal-track-album').textContent = track.album?.name || 'Unknown
+  Album';
 
           // Populate audio features
           document.getElementById('modal-tempo').textContent = features.tempo ?
   Math.round(features.tempo) + ' BPM' : 'N/A';
-          document.getElementById('modal-key').textContent =
-  this.getKeyName(features.key, features.mode);
-          document.getElementById('modal-time-signature').textContent =
-  features.time_signature ? features.time_signature + '/4' : 'N/A';
-          document.getElementById('modal-release-date').textContent =
-  track.album?.release_date || 'Unknown';
+          document.getElementById('modal-key').textContent = this.getKeyName(features.key,
+  features.mode);
+          document.getElementById('modal-time-signature').textContent = features.time_signature ?
+  features.time_signature + '/4' : 'N/A';
+          document.getElementById('modal-release-date').textContent = track.album?.release_date ||
+  'Unknown';
           document.getElementById('modal-duration').textContent =
   this.formatDuration(track.duration_ms);
 
           document.getElementById('modal-energy').textContent = features.energy ?
   Math.round(features.energy * 100) + '%' : 'N/A';
-          document.getElementById('modal-danceability').textContent =
-  features.danceability ? Math.round(features.danceability * 100) + '%' : 'N/A';
+          document.getElementById('modal-danceability').textContent = features.danceability ?
+  Math.round(features.danceability * 100) + '%' : 'N/A';
           document.getElementById('modal-valence').textContent = features.valence ?
   Math.round(features.valence * 100) + '%' : 'N/A';
-          document.getElementById('modal-acousticness').textContent =
-  features.acousticness ? Math.round(features.acousticness * 100) + '%' : 'N/A';
-          document.getElementById('modal-instrumentalness').textContent =
-  features.instrumentalness ? Math.round(features.instrumentalness * 100) + '%' :
-  'N/A';
+          document.getElementById('modal-acousticness').textContent = features.acousticness ?
+  Math.round(features.acousticness * 100) + '%' : 'N/A';
+          document.getElementById('modal-instrumentalness').textContent = features.instrumentalness ?
+   Math.round(features.instrumentalness * 100) + '%' : 'N/A';
           document.getElementById('modal-liveness').textContent = features.liveness ?
-   Math.round(features.liveness * 100) + '%' : 'N/A';
-          document.getElementById('modal-speechiness').textContent =
-  features.speechiness ? Math.round(features.speechiness * 100) + '%' : 'N/A';
+  Math.round(features.liveness * 100) + '%' : 'N/A';
+          document.getElementById('modal-speechiness').textContent = features.speechiness ?
+  Math.round(features.speechiness * 100) + '%' : 'N/A';
 
           this.modal.style.display = 'flex';
       }
@@ -438,8 +497,7 @@
           } else {
               this.currentTracks = this.allTracks.filter(track =>
                   track.name.toLowerCase().includes(searchTerm) ||
-                  track.artists?.some(artist =>
-  artist.name.toLowerCase().includes(searchTerm)) ||
+                  track.artists?.some(artist => artist.name.toLowerCase().includes(searchTerm)) ||
                   track.album?.name.toLowerCase().includes(searchTerm)
               );
           }
@@ -506,8 +564,8 @@
 
       getKeyName(key, mode) {
           if (key === undefined || key === null) return 'Unknown';
-          const keys = ['C', 'C♯/D♭', 'D', 'D♯/E♭', 'E', 'F', 'F♯/G♭', 'G', 'G♯/A♭',
-  'A', 'A♯/B♭', 'B'];
+          const keys = ['C', 'C♯/D♭', 'D', 'D♯/E♭', 'E', 'F', 'F♯/G♭', 'G', 'G♯/A♭', 'A', 'A♯/B♭',
+  'B'];
           const keyName = keys[key] || 'Unknown';
           const modeName = mode === 1 ? 'Major' : 'Minor';
           return `${keyName} ${modeName}`;
