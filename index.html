@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Bud - Spotify Track Analyzer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Music Bud</h1>
+            <p>Discover detailed track information using Spotify API</p>
+        </header>
+
+        <main>
+            <section class="auth-section">
+                <div class="api-key-container">
+                    <label for="client-id">Spotify Client ID:</label>
+                    <input type="text" id="client-id" placeholder="Enter your Spotify Client ID">
+                    
+                    <button id="connect-btn">Connect to Spotify</button>
+                    <div id="auth-status" class="status"></div>
+                    <p class="auth-note">You'll be redirected to Spotify to authorize access to your music library.</p>
+                </div>
+            </section>
+
+            <section class="library-section" style="display: none;">
+                <div class="library-controls">
+                    <div class="source-selector">
+                        <button id="liked-songs-btn" class="source-btn active">Liked Songs</button>
+                        <button id="playlists-btn" class="source-btn">Playlists</button>
+                        <button id="albums-btn" class="source-btn">Albums</button>
+                    </div>
+                    
+                    <div class="playlist-selector" style="display: none;">
+                        <select id="playlist-select">
+                            <option value="">Select a playlist...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="album-selector" style="display: none;">
+                        <select id="album-select">
+                            <option value="">Select an album...</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <div class="search-container">
+                        <input type="text" id="search-input" placeholder="Search tracks in current list...">
+                        <button id="search-btn">Filter</button>
+                    </div>
+                    
+                    <div class="sort-container">
+                        <select id="sort-select">
+                            <option value="name">Sort by Name</option>
+                            <option value="artist">Sort by Artist</option>
+                            <option value="album">Sort by Album</option>
+                            <option value="release_date">Sort by Release Date</option>
+                            <option value="tempo">Sort by BPM</option>
+                            <option value="energy">Sort by Energy</option>
+                            <option value="danceability">Sort by Danceability</option>
+                        </select>
+                        <button id="sort-order-btn" data-order="asc">↑</button>
+                    </div>
+                </div>
+                
+                <div class="track-list">
+                    <div id="loading" class="loading" style="display: none;">Loading tracks...</div>
+                    <div id="track-grid" class="track-grid"></div>
+                </div>
+            </section>
+
+            <!-- Modal for track details -->
+            <div id="track-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close-btn">&times;</span>
+                    <div class="track-info">
+                        <div class="track-basic">
+                            <img id="modal-track-image" src="" alt="Album cover">
+                            <div class="track-details">
+                                <h2 id="modal-track-name"></h2>
+                                <p id="modal-track-artist"></p>
+                                <p id="modal-track-album"></p>
+                            </div>
+                        </div>
+                        
+                        <div class="track-attributes">
+                            <h3>Track Analysis</h3>
+                            <div class="attributes-grid">
+                                <div class="attribute">
+                                    <label>Tempo (BPM)</label>
+                                    <span id="modal-tempo"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Key</label>
+                                    <span id="modal-key"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Time Signature</label>
+                                    <span id="modal-time-signature"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Release Date</label>
+                                    <span id="modal-release-date"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Duration</label>
+                                    <span id="modal-duration"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Energy</label>
+                                    <span id="modal-energy"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Danceability</label>
+                                    <span id="modal-danceability"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Valence</label>
+                                    <span id="modal-valence"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Acousticness</label>
+                                    <span id="modal-acousticness"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Instrumentalness</label>
+                                    <span id="modal-instrumentalness"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Liveness</label>
+                                    <span id="modal-liveness"></span>
+                                </div>
+                                <div class="attribute">
+                                    <label>Speechiness</label>
+                                    <span id="modal-speechiness"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <section class="error-section" style="display: none;">
+                <div class="error-message" id="error-message"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
