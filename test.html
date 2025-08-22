@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Bud Test</title>
+</head>
+<body>
+    <h1>Music Bud Test</h1>
+    <input type="text" id="client-id" placeholder="Enter Client ID">
+    <button id="connect-btn">Test Connect</button>
+    <div id="result"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('JavaScript loaded successfully');
+            
+            const connectBtn = document.getElementById('connect-btn');
+            const clientIdInput = document.getElementById('client-id');
+            const result = document.getElementById('result');
+            
+            connectBtn.addEventListener('click', () => {
+                console.log('Button clicked!');
+                const clientId = clientIdInput.value.trim();
+                
+                if (!clientId) {
+                    result.textContent = 'Please enter Client ID';
+                    return;
+                }
+                
+                result.textContent = 'Redirecting to Spotify...';
+                
+                const redirectUri = window.location.origin + window.location.pathname;
+                const authUrl = `https://accounts.spotify.com/authorize?` +
+                    `client_id=${clientId}&` +
+                    `response_type=token&` +
+                    `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+                    `scope=user-library-read`;
+                
+                console.log('Redirect URI:', redirectUri);
+                console.log('Auth URL:', authUrl);
+                
+                window.location.href = authUrl;
+            });
+        });
+    </script>
+</body>
+</html>
